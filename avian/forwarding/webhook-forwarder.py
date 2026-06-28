@@ -14,7 +14,7 @@ import sqlite3
 import time
 
 # ---- CONFIG (edit these) ---------------------------------------------------
-ENDPOINT_URL = "https://example.com/webhook"   # your HTTPS receiver
+ENDPOINT_URL = "https://birds.mwh-b.com/detections"   # your HTTPS receiver
 AUTH_TOKEN = ""                                # bearer token / shared secret
 AUTH_HEADER = "Authorization"                  # header name to send the token in
 AUTH_SCHEME = "Bearer"                          # set to "" to send the bare token
