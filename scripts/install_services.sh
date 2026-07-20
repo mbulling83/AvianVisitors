@@ -47,6 +47,7 @@ Restart=always
 Type=simple
 RestartSec=2
 User=${USER}
+OOMScoreAdjust=-300
 ExecStart=$PYTHON_VIRTUAL_ENV /usr/local/bin/birdnet_analysis.py
 [Install]
 WantedBy=multi-user.target
@@ -147,6 +148,7 @@ Restart=always
 Type=simple
 RestartSec=3
 User=${USER}
+OOMScoreAdjust=-500
 ExecStart=/usr/local/bin/birdnet_recording.sh
 [Install]
 WantedBy=multi-user.target
@@ -283,7 +285,14 @@ ExecStart=$HOME/BirdNET-Pi/birdnet/bin/streamlit run $HOME/BirdNET-Pi/scripts/pl
 WantedBy=multi-user.target
 EOF
   ln -sf $HOME/BirdNET-Pi/templates/birdnet_stats.service /usr/lib/systemd/system
-  systemctl enable birdnet_stats.service
+  if is_low_mem; then
+    # streamlit keeps ~250MB resident, which a Pi Zero 2 W cannot spare.
+    # The unit stays installed so it can be enabled from Tools > Services.
+    echo "Low-memory device: leaving birdnet_stats.service disabled"
+    systemctl disable birdnet_stats.service 2>/dev/null
+  else
+    systemctl enable birdnet_stats.service
+  fi
 }
 
 install_spectrogram_service() {
@@ -295,6 +304,7 @@ Restart=always
 RestartSec=10
 Type=simple
 User=${USER}
+Nice=10
 ExecStart=/usr/local/bin/spectrogram.sh
 [Install]
 WantedBy=multi-user.target
@@ -305,7 +315,36 @@ EOF
 
 install_chart_viewer_service() {
   echo "Installing the chart_viewer.service"
-  cat << EOF > $HOME/BirdNET-Pi/templates/chart_viewer.service
+  if is_low_mem; then
+    # A resident matplotlib/pandas/seaborn daemon holds ~120MB. On low-memory
+    # boards run daily_plot.py as a oneshot on a timer instead: same charts,
+    # zero resident memory between runs.
+    cat << EOF > $HOME/BirdNET-Pi/templates/chart_viewer.service
+[Unit]
+Description=BirdNET-Pi Chart Viewer Service
+[Service]
+Type=oneshot
+User=$USER
+Nice=19
+IOSchedulingClass=idle
+ExecStart=$PYTHON_VIRTUAL_ENV /usr/local/bin/daily_plot.py
+[Install]
+WantedBy=multi-user.target
+EOF
+    cat << EOF > $HOME/BirdNET-Pi/templates/chart_viewer.timer
+[Unit]
+Description=Periodic BirdNET-Pi chart generation
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=15min
+[Install]
+WantedBy=timers.target
+EOF
+    ln -sf $HOME/BirdNET-Pi/templates/chart_viewer.service /usr/lib/systemd/system
+    ln -sf $HOME/BirdNET-Pi/templates/chart_viewer.timer /usr/lib/systemd/system
+    systemctl enable chart_viewer.timer
+  else
+    cat << EOF > $HOME/BirdNET-Pi/templates/chart_viewer.service
 [Unit]
 Description=BirdNET-Pi Chart Viewer Service
 [Service]
@@ -317,8 +356,9 @@ ExecStart=$PYTHON_VIRTUAL_ENV /usr/local/bin/daily_plot.py --daemon --sleep 2
 [Install]
 WantedBy=multi-user.target
 EOF
-  ln -sf $HOME/BirdNET-Pi/templates/chart_viewer.service /usr/lib/systemd/system
-  systemctl enable chart_viewer.service
+    ln -sf $HOME/BirdNET-Pi/templates/chart_viewer.service /usr/lib/systemd/system
+    systemctl enable chart_viewer.service
+  fi
 }
 
 install_gotty_logs() {
@@ -361,6 +401,12 @@ EOF
 configure_caddy_php() {
   echo "Configuring PHP for Caddy"
   sed -i 's/www-data/caddy/g' /etc/php/*/fpm/pool.d/www.conf
+  if is_low_mem; then
+    # Spawn PHP workers only when a request comes in and reap them quickly,
+    # instead of keeping a dynamic pool resident.
+    echo "Low-memory device: setting php-fpm to ondemand with 3 workers"
+    sed -i -E 's/^pm = .*/pm = ondemand/; s/^pm\.max_children = .*/pm.max_children = 3/; s/^;?pm\.process_idle_timeout = .*/pm.process_idle_timeout = 10s/' /etc/php/*/fpm/pool.d/www.conf
+  fi
   systemctl restart php\*-fpm.service
   echo "Adding Caddy sudoers rule"
   cat << EOF > /etc/sudoers.d/010_caddy-nopasswd
@@ -414,7 +460,12 @@ config_icecast() {
   done
   sed -i 's|<!-- <bind-address>.*|<bind-address>127.0.0.1</bind-address>|;s|<!-- <shoutcast-mount>.*|<shoutcast-mount>/stream</shoutcast-mount>|' /etc/icecast2/icecast.xml
 
-  systemctl enable icecast2.service
+  if is_low_mem; then
+    echo "Low-memory device: leaving icecast2.service disabled"
+    systemctl disable icecast2.service 2>/dev/null
+  else
+    systemctl enable icecast2.service
+  fi
 }
 
 install_livestream_service() {
@@ -433,7 +484,15 @@ ExecStart=/usr/local/bin/livestream.sh
 WantedBy=multi-user.target
 EOF
   ln -sf $HOME/BirdNET-Pi/templates/livestream.service /usr/lib/systemd/system
-  systemctl enable livestream.service
+  if is_low_mem; then
+    # livestream runs a continuous ffmpeg mp3 encode into icecast even when
+    # nobody is listening. Leave it opt-in on low-memory boards - it can be
+    # enabled from Tools > Services (which also enables icecast2).
+    echo "Low-memory device: leaving livestream.service disabled"
+    systemctl disable livestream.service 2>/dev/null
+  else
+    systemctl enable livestream.service
+  fi
 }
 
 install_cleanup_cron() {
@@ -466,6 +525,11 @@ install_services() {
   update_etc_hosts
   set_login
   install_tmp_mount
+
+  if is_low_mem; then
+    echo "Detected <700MB RAM: applying low-memory profile (Pi Zero 2 W class device)"
+    ${my_dir}/scripts/install_zram_service.sh
+  fi
 
   install_depends
   install_scripts

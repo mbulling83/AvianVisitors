@@ -47,6 +47,11 @@ MODEL=BirdNET_GLOBAL_6K_V2.4_Model_FP16
 SF_THRESH=0.03
 DATA_MODEL_VERSION=1
 
+## TFLITE_THREADS sets how many CPU threads the TFLite interpreter may use.
+## 0 (or empty) means one thread per CPU core, which is the right choice on
+## small boards like the Pi Zero 2 W.
+TFLITE_THREADS=0
+
 #---------------------  BirdWeather Station Information -----------------------#
 #_____________The variable below can be set to have your BirdNET-Pi____________#
 #__________________also act as a BirdWeather listening station_________________#

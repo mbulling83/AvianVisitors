@@ -177,7 +177,10 @@ install_tmp_mount
 remove_unit_file birdnet_server.service /usr/local/bin/server.py
 remove_unit_file extraction.service /usr/local/bin/extract_new_birdsounds.sh
 
-if ! grep 'daemon' $HOME/BirdNET-Pi/templates/chart_viewer.service &>/dev/null;then
+# Skip the daemon migration on the low-memory profile, where chart_viewer is
+# a Type=oneshot unit driven by chart_viewer.timer instead of a resident daemon.
+if ! grep -q 'oneshot' $HOME/BirdNET-Pi/templates/chart_viewer.service &>/dev/null \
+  && ! grep 'daemon' $HOME/BirdNET-Pi/templates/chart_viewer.service &>/dev/null;then
   sed -i "s|daily_plot.py.*|daily_plot.py --daemon --sleep 2|" ~/BirdNET-Pi/templates/chart_viewer.service
   systemctl daemon-reload && restart_services.sh
 fi

@@ -19,6 +19,18 @@ except ImportError:
 log = logging.getLogger(__name__)
 
 
+def get_num_threads():
+    # TFLITE_THREADS in birdnet.conf overrides; 0/unset means use every core,
+    # which matters on small boards like the Pi Zero 2 W where single-threaded
+    # inference can barely keep up with real-time recording.
+    conf = get_settings()
+    try:
+        threads = conf.getint('TFLITE_THREADS', 0)
+    except ValueError:
+        threads = 0
+    return threads if threads > 0 else (os.cpu_count() or 1)
+
+
 def get_model(model=None):
     conf = get_settings()
     if model is None:
@@ -59,7 +71,7 @@ class Basemodel:
 
     def __init__(self):
         model_path = os.path.join(MODEL_PATH, f'{self.model_name}.tflite')
-        self.interpreter = tflite.Interpreter(model_path)
+        self.interpreter = tflite.Interpreter(model_path, num_threads=get_num_threads())
         self.interpreter.allocate_tensors()
         input_details = self.interpreter.get_input_details()
         output_details = self.interpreter.get_output_details()

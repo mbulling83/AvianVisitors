@@ -1,5 +1,14 @@
 # this should only contain functions and assignments, ie source install.sh should not have side effects.
 
+# True on boards with <700MB RAM (Pi Zero 2 W, Pi 3A+). Used to pick the
+# low-memory service profile: no resident streamlit/matplotlib daemons,
+# zram swap, ondemand php-fpm.
+is_low_mem() {
+  local mem_kb
+  mem_kb=$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null)
+  [ -n "$mem_kb" ] && [ "$mem_kb" -lt 716800 ]
+}
+
 get_tf_whl () {
   BASE_URL=https://github.com/Nachtzuster/BirdNET-Pi/releases/download/v0.1/
 
