@@ -310,7 +310,14 @@ ExecStart=/usr/local/bin/spectrogram.sh
 WantedBy=multi-user.target
 EOF
   ln -sf $HOME/BirdNET-Pi/templates/spectrogram_viewer.service /usr/lib/systemd/system
-  systemctl enable spectrogram_viewer.service
+  if is_low_mem; then
+    # Continuous sox spectrogram render that only feeds the live image on the
+    # stock overview page. Enable from Tools > Services if you use that page.
+    echo "Low-memory device: leaving spectrogram_viewer.service disabled"
+    systemctl disable spectrogram_viewer.service 2>/dev/null
+  else
+    systemctl enable spectrogram_viewer.service
+  fi
 }
 
 install_chart_viewer_service() {
@@ -395,7 +402,12 @@ ExecStart=/usr/local/bin/gotty --address localhost -w -p 8888 --path terminal --
 WantedBy=multi-user.target
 EOF
   ln -sf $HOME/BirdNET-Pi/templates/web_terminal.service /usr/lib/systemd/system
-  systemctl enable web_terminal.service
+  if is_low_mem; then
+    echo "Low-memory device: leaving web_terminal.service disabled"
+    systemctl disable web_terminal.service 2>/dev/null
+  else
+    systemctl enable web_terminal.service
+  fi
 }
 
 configure_caddy_php() {

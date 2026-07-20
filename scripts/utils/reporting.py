@@ -6,11 +6,9 @@ import sqlite3
 import subprocess
 import tempfile
 import io
-import soundfile
 from time import sleep
 
 import requests
-from PIL import Image, ImageDraw, ImageFont
 
 from .helpers import get_settings, get_font, DB_PATH
 from .classes import Detection, ParseFileName
@@ -47,6 +45,10 @@ def extract_safe(in_file, out_file, start, stop):
 
 
 def spectrogram(in_file, title, comment, raw=0):
+    # lazy import: keeps PIL out of the analysis process when
+    # EXTRACTION_SPECTROGRAM=0 (headless sensor deployments)
+    from PIL import Image, ImageDraw, ImageFont
+
     fd, tmp_file = tempfile.mkstemp(suffix='.png')
     os.close(fd)
     args = ['sox', '-V1', f'{in_file}', '-n', 'remix', '1', 'rate', '24k', 'spectrogram',
@@ -83,7 +85,11 @@ def extract_detection(file: ParseFileName, detection: Detection):
     else:
         os.makedirs(new_dir, exist_ok=True)
         extract_safe(file.file_name, new_file, detection.start, detection.stop)
-        spectrogram(new_file, detection.common_name, new_file.replace(os.path.expanduser('~/'), ''), conf['RAW_SPECTROGRAM'])
+        # The per-detection spectrogram PNG is only used by the local web UI
+        # (todays_detections.php); headless sensors that forward detections to
+        # a remote receiver can skip the sox+PIL render per detection.
+        if conf.get('EXTRACTION_SPECTROGRAM', '1') != '0':
+            spectrogram(new_file, detection.common_name, new_file.replace(os.path.expanduser('~/'), ''), conf['RAW_SPECTROGRAM'])
     return new_file
 
 
@@ -173,6 +179,7 @@ def bird_weather(file: ParseFileName, detections: [Detection]):
         return
     if detections:
         try:
+            import soundfile
             data, samplerate = soundfile.read(file.file_name)
             buf = io.BytesIO()
             soundfile.write(buf, data, samplerate, format='FLAC')

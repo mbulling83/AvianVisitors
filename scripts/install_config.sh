@@ -255,6 +255,12 @@ EXTRACTION_LENGTH=
 
 AUDIOFMT=mp3
 
+## EXTRACTION_SPECTROGRAM controls whether a spectrogram PNG is rendered next
+## to each extracted audio clip. The PNGs are only shown by the local web UI
+## (Today's Detections); set to 0 on a headless sensor that forwards
+## detections to a remote receiver to skip the sox+PIL render per detection.
+EXTRACTION_SPECTROGRAM=1
+
 ## DATABASE_LANG is the language used for the bird species database
 DATABASE_LANG=en
 

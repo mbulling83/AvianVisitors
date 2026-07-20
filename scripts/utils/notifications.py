@@ -1,4 +1,3 @@
-import apprise
 import os
 import socket
 import requests
@@ -18,6 +17,10 @@ species_last_notified = {}
 
 
 def notify(body, title, attached=""):
+    # apprise is imported here rather than at module level so the analysis
+    # process never pays its memory cost unless notifications actually fire
+    import apprise
+
     global apobj
     if apobj is None:
         asset = apprise.AppriseAsset(

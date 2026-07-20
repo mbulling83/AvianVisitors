@@ -2,8 +2,8 @@ import logging
 import os
 import time
 
-import librosa
 import numpy as np
+import soundfile
 
 from .classes import Detection, ParseFileName
 from .helpers import get_settings, get_language
@@ -47,8 +47,16 @@ def splitSignal(sig, rate, overlap, seconds=3.0, minlen=1.5):
 def readAudioData(path, overlap, sample_rate, chunk_duration):
     log.info('READING AUDIO DATA...')
 
-    # Open file with librosa (uses ffmpeg or libav)
-    sig, rate = librosa.load(path, sr=sample_rate, mono=True, res_type='kaiser_fast')
+    # Recordings are PCM wav at 48kHz, which is what the BirdNET models want,
+    # so the common path is a plain soundfile read + mono mixdown. librosa
+    # (and the numba/scipy stack it drags in) is only imported when a model
+    # with a different sample rate (e.g. Perch at 32kHz) forces a resample.
+    sig, rate = soundfile.read(path, dtype='float32', always_2d=True)
+    sig = sig.mean(axis=1)
+    if rate != sample_rate:
+        import librosa
+        sig = librosa.resample(sig, orig_sr=rate, target_sr=sample_rate, res_type='kaiser_fast')
+        rate = sample_rate
 
     # Split audio into chunks
     chunks = splitSignal(sig, rate, overlap, seconds=chunk_duration)
