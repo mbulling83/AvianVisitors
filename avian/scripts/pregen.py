@@ -71,6 +71,12 @@ GEMINI_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
     "gemini-2.5-flash-image:generateContent"
 )
+# OpenRouter's dedicated image-generation endpoint (OpenAI-style auth).
+# Selected with --provider openrouter. Model is configurable via --model;
+# the default is bytedance's Seedream 4.5, but any image-out slug works
+# (e.g. google/gemini-2.5-flash-image).
+OPENROUTER_URL = "https://openrouter.ai/api/v1/images"
+OPENROUTER_MODEL = "bytedance-seed/seedream-4.5"
 POSES = {1: "perched", 2: "in flight with wings spread"}
 
 # Genera where Gemini's prior collapses to Blue Jay markings unless we
@@ -388,6 +394,90 @@ def _anti_ref_line(anti_ref_key: str | None) -> str:
     )
 
 
+def _http_json_with_retry(req: urllib.request.Request) -> dict:
+    """POST with bounded retry on 429 + transient 5xx. Returns parsed
+    JSON. On a non-retryable HTTP error, raises RuntimeError carrying the
+    response body (up to 500 chars) so API-level messages surface to the
+    caller instead of a bare 'HTTP Error 400'."""
+    backoff = 4.0
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(req, timeout=180) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 500, 502, 503, 504) and attempt < 3:
+                ra = e.headers.get("Retry-After")
+                try:
+                    retry_after = float(ra) if ra else backoff
+                except (TypeError, ValueError):
+                    retry_after = backoff  # HTTP-date format, fall back
+                time.sleep(retry_after)
+                backoff *= 2
+                continue
+            body = ""
+            try:
+                body = e.read().decode("utf-8", "replace")[:500]
+            except Exception:
+                pass
+            raise RuntimeError(f"HTTP {e.code}: {body or e.reason}")
+        except (urllib.error.URLError, OSError) as e:
+            # OSError covers bare socket faults (ConnectionResetError,
+            # BrokenPipeError) that surface mid-read when a provider drops
+            # the connection under load - retry rather than kill the run.
+            if attempt < 3:
+                time.sleep(backoff)
+                backoff *= 2
+                continue
+            raise RuntimeError(f"connection failed after retries: {e}")
+    raise RuntimeError("exhausted retries")
+
+
+def _gen_openrouter(api_key: str, model: str, parts: list[dict]) -> bytes:
+    """Render via OpenRouter's dedicated image API. Reuses the Gemini
+    `parts` list: text parts are concatenated into the single `prompt`
+    string and each inline_data image becomes an ordered input_reference
+    (a base64 data URL). Reference ordering is preserved, so the prompt's
+    'IMAGE 1/2/3' captions still line up with the attached images."""
+    prompt_lines: list[str] = []
+    refs: list[dict] = []
+    for p in parts:
+        if p.get("text"):
+            prompt_lines.append(p["text"])
+        inline = p.get("inline_data")
+        if inline and inline.get("data"):
+            mime = inline.get("mime_type", "image/png")
+            refs.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:{mime};base64,{inline['data']}"},
+            })
+    payload: dict = {
+        "model": model,
+        "prompt": "\n\n".join(prompt_lines),
+        "n": 1,
+        "output_format": "png",
+    }
+    if refs:
+        payload["input_references"] = refs
+    req = urllib.request.Request(
+        OPENROUTER_URL,
+        data=json.dumps(payload).encode(),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        },
+        method="POST",
+    )
+    resp = _http_json_with_retry(req)
+    for item in resp.get("data", []):
+        if item.get("b64_json"):
+            return base64.b64decode(item["b64_json"])
+        # Some providers hand back a URL instead of inline bytes.
+        if item.get("url"):
+            with urllib.request.urlopen(item["url"], timeout=180) as r:
+                return r.read()
+    raise RuntimeError(f"no image from openrouter (keys={list(resp.keys())})")
+
+
 def gen_one(
     api_key: str,
     prompt: str,
@@ -399,9 +489,12 @@ def gen_one(
     anti_ref_key: str | None = None,
     species_note: str | None = None,
     style_ref: Path | None = None,
+    provider: str = "gemini",
+    model: str = "",
 ) -> bytes:
-    """Single Gemini call with bounded retry on 429 + transient 5xx.
-    Returns raw PNG bytes.
+    """Single image-model call with bounded retry on 429 + transient 5xx.
+    Returns raw PNG bytes. provider is 'gemini' (Google's generateContent)
+    or 'openrouter' (the dedicated image API, model from --model).
 
     positive_ref: Wikipedia/Audubon photo of the target species.
     anti_ref: lookalike photo to attach as IMAGE 2. The companion
@@ -470,6 +563,9 @@ def gen_one(
             "data": base64.b64encode(style_ref.read_bytes()).decode(),
         }})
 
+    if provider == "openrouter":
+        return _gen_openrouter(api_key, model or OPENROUTER_MODEL, parts)
+
     payload = {
         "contents": [{"parts": parts}],
         # TEXT included so Gemini can surface safety messaging without
@@ -484,30 +580,7 @@ def gen_one(
         headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
         method="POST",
     )
-
-    backoff = 4.0
-    for attempt in range(4):
-        try:
-            with urllib.request.urlopen(req, timeout=180) as r:
-                resp = json.loads(r.read())
-            break
-        except urllib.error.HTTPError as e:
-            if e.code in (429, 500, 502, 503, 504) and attempt < 3:
-                ra = e.headers.get("Retry-After")
-                try:
-                    retry_after = float(ra) if ra else backoff
-                except (TypeError, ValueError):
-                    retry_after = backoff  # HTTP-date format, fall back
-                time.sleep(retry_after)
-                backoff *= 2
-                continue
-            raise
-        except urllib.error.URLError:
-            if attempt < 3:
-                time.sleep(backoff)
-                backoff *= 2
-                continue
-            raise
+    resp = _http_json_with_retry(req)
 
     for cand in resp.get("candidates", []):
         for part in cand.get("content", {}).get("parts", []):
@@ -543,7 +616,13 @@ def main() -> int:
     src.add_argument("--stdin", action="store_true", help="Read Sci|Com lines from stdin")
     ap.add_argument("--ebird-region", help="eBird region code (e.g. US-CA, US-CA-085) to filter labels")
     ap.add_argument("--ebird-key", help="eBird API key (or EBIRD_API_KEY env)")
+    ap.add_argument("--provider", choices=["gemini", "openrouter"], default="gemini",
+                    help="Image backend (default: gemini)")
     ap.add_argument("--gemini-key", help="Gemini API key (or GEMINI_API_KEY env)")
+    ap.add_argument("--openrouter-key", help="OpenRouter API key (or OPENROUTER_API_KEY env)")
+    ap.add_argument("--model",
+                    help="Model slug for --provider openrouter "
+                         f"(default: {OPENROUTER_MODEL})")
     ap.add_argument("--out", type=Path,
                     default=Path(__file__).resolve().parents[1] / "assets" / "illustrations",
                     help="Output directory (default: avian/assets/illustrations/)")
@@ -570,10 +649,18 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=0, help="Cap species count for testing")
     args = ap.parse_args()
 
-    gemini_key = args.gemini_key or os.environ.get("GEMINI_API_KEY", "")
-    if not gemini_key:
-        print("error: GEMINI_API_KEY required (--gemini-key or env)", file=sys.stderr)
-        return 2
+    if args.provider == "openrouter":
+        api_key = args.openrouter_key or os.environ.get("OPENROUTER_API_KEY", "")
+        if not api_key:
+            print("error: OPENROUTER_API_KEY required (--openrouter-key or env)", file=sys.stderr)
+            return 2
+        model = args.model or OPENROUTER_MODEL
+    else:
+        api_key = args.gemini_key or os.environ.get("GEMINI_API_KEY", "")
+        if not api_key:
+            print("error: GEMINI_API_KEY required (--gemini-key or env)", file=sys.stderr)
+            return 2
+        model = args.model or ""
 
     # Build species list
     if args.labels:
@@ -612,7 +699,10 @@ def main() -> int:
         print(f"[notes] loaded per-species addenda for {len(notes)} species")
 
     total = len(species) * len(args.poses)
-    print(f"generating up to {total} illustrations into {args.out}/")
+    banner = f"{args.provider}"
+    if args.provider == "openrouter":
+        banner += f" ({model})"
+    print(f"generating up to {total} illustrations into {args.out}/ via {banner}")
     for key, p in anti_paths.items():
         print(f"[refs] {ANTI_REFS[key]['common_name']} anti-reference: {p.name}")
 
@@ -642,11 +732,12 @@ def main() -> int:
                 style_ref_path = args.styles / select_style_ref(sci, pose)
                 if not style_ref_path.exists():
                     style_ref_path = None
-                data = gen_one(gemini_key, prompt, sci, com, pose,
+                data = gen_one(api_key, prompt, sci, com, pose,
                                positive_ref=pos_ref, anti_ref=anti,
                                anti_ref_key=anti_key_for_call,
                                species_note=notes.get(sci),
-                               style_ref=style_ref_path)
+                               style_ref=style_ref_path,
+                               provider=args.provider, model=model)
                 path.write_bytes(data)
                 done += 1
                 refs_tag = "+ref" if pos_ref else ""
