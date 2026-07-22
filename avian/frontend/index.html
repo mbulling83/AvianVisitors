@@ -10,19 +10,13 @@
 <!-- Apply the saved theme before first paint so dark mode doesn't flash
      light on load. The full switcher lives in Settings (writes bird:theme). -->
 <script>try{if(localStorage.getItem('bird:theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
-<link rel="stylesheet" href="./styles.css?v=r12">
+<link rel="stylesheet" href="./styles.css?v=r13">
 </head>
 <body class="av-local">
-<!-- Pill in the top-left slot, only visible on admin overlays
-     (body.admin-on); CSS in styles.css hides it everywhere else.
-     href="/" returns to the collage view via a full reload, which is
-     fine for an off-hot-path control. -->
-<a class="return-to-atlas" id="returnToAtlas" href="/" aria-label="back to collage">
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M10 3 L4 8 L10 13"/>
-  </svg>
-  collage
-</a>
+<!-- Read-only public board: the admin/settings drawer and its password
+     gate have been removed so there is no path to change configuration
+     or restart services from the web UI. The header carries only the
+     time-window picker. -->
 <header class="top">
   <div class="window-pick" id="winPick" role="tablist">
     <i class="seg-pill" aria-hidden="true"></i>
@@ -32,25 +26,14 @@
     <button data-h="168" type="button">7D</button>
     <button data-h="1000000" type="button">ALL</button>
   </div>
-  <button class="menu-btn" id="menuBtn">menu</button>
 </header>
-
-<aside id="menu-dd" aria-hidden="true">
-  <div id="dd-locked">
-    <form class="lock-row" id="unlockForm">
-      <input id="lockPass" type="password" placeholder="password" autocomplete="current-password">
-      <button type="submit" aria-label="unlock">→</button>
-    </form>
-    <p class="lock-hint" id="lockHint">enter password to unlock tools.</p>
-  </div>
-  <nav class="menu-items" id="dd-items"></nav>
-  <p class="built-by">built by <a href="https://theodore.net" target="_blank" rel="noopener">teddy</a> · <a href="https://github.com/Twarner491/AvianVisitors" target="_blank" rel="noopener">github</a></p>
-</aside>
 
 <main class="stage">
   <header class="static-head">
     <button type="button" class="pre" id="aboutLink">your birds</button>
     <h1 id="staticTitle">Heard Recently</h1>
+    <p class="site-loc">Birds heard at Allotment 223, Fulham Palace Allotments</p>
+    <p class="last-updated" id="lastUpdated" aria-live="polite"></p>
   </header>
   <div class="views" id="views">
 
@@ -191,6 +174,7 @@
     <h2 id="aboutTitle">The birds outside your window</h2>
     <p class="about-body">A tiny microphone identifies every passing bird with Cornell's <a href="https://birdnet.cornell.edu/" target="_blank" rel="noopener">BirdNET</a>. Each species shows up as an illustration in the collage, sized by how often it's been heard.</p>
     <button type="button" class="about-explore" data-close="1">explore the birds →</button>
+    <p class="built-by">built by <a href="https://theodore.net" target="_blank" rel="noopener">teddy</a> · <a href="https://github.com/Twarner491/AvianVisitors" target="_blank" rel="noopener">github</a></p>
     </div>
 </div>
 
@@ -213,6 +197,6 @@
   </div>
 </section>
 
-<script src="./apt.js?v=r12"></script>
+<script src="./apt.js?v=r13"></script>
 </body>
 </html>

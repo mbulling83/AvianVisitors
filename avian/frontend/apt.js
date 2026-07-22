@@ -1329,6 +1329,37 @@
     if (animate) playAtlasEntrance();
   }
 
+  // "Most recent updated at" line under the masthead. The newest
+  // detection in the current window is the max last_seen across the
+  // recent species (the API sorts recent DESC by last_seen, but the
+  // collage view can reorder, so scan to be safe). Shows a relative
+  // age plus a clock/date so a glance tells you how fresh the board is.
+  function renderLastUpdated() {
+    var el = document.getElementById('lastUpdated');
+    if (!el) return;
+    var sp = (DATA.recent && DATA.recent.species) || [];
+    var maxMs = NaN;
+    for (var i = 0; i < sp.length; i++) {
+      var t = Date.parse(String(sp[i].last_seen || '').replace(' ', 'T'));
+      if (!isNaN(t) && (isNaN(maxMs) || t > maxMs)) maxMs = t;
+    }
+    if (isNaN(maxMs)) { el.textContent = ''; return; }
+    var now = Date.now();
+    var diff = Math.max(0, Math.round((now - maxMs) / 1000));
+    var ago;
+    if (diff < 60) ago = 'just now';
+    else if (diff < 3600) ago = Math.round(diff / 60) + ' min ago';
+    else if (diff < 86400) ago = Math.round(diff / 3600) + ' hr ago';
+    else ago = Math.round(diff / 86400) + ' d ago';
+    var d = new Date(maxMs);
+    var hh = ('0' + d.getHours()).slice(-2);
+    var mm = ('0' + d.getMinutes()).slice(-2);
+    var sameDay = d.toDateString() === new Date(now).toDateString();
+    var when = sameDay ? (hh + ':' + mm)
+      : ((d.getMonth() + 1) + '/' + d.getDate() + ' ' + hh + ':' + mm);
+    el.textContent = 'Most recent detection ' + ago + ' · ' + when;
+  }
+
   function renderWindowDependent(animate) {
     // renderStatsLists runs BEFORE drawHistograms so the stats entrance
     // (fired at the end of drawHistograms) can stagger the side-panel rows
@@ -1337,12 +1368,14 @@
     renderStatsLists();
     drawHistograms(animate);
     renderAtlas(animate);
+    renderLastUpdated();
   }
   function renderTimeIndependent(animate) {
     // Lists first, then the graph (see renderWindowDependent).
     renderStatsLists();
     drawHistograms(animate);
     renderAtlas(animate);
+    renderLastUpdated();
   }
 
   function refreshRecent(animate) {
@@ -1420,8 +1453,16 @@
   startPolling();
 
   // ---- Menu dropdown ----
+  // Read-only public build: the menu button, the drawer, and its
+  // password unlock form have been removed from index.html so there is
+  // no UI path to settings / tools / service restarts. Both getElementById
+  // calls below return null, so this entire block is guarded off and
+  // no-ops. The admin overlay code further down is likewise never routed
+  // to (see readAdminHash). Left in place, guarded, to keep the diff
+  // small and reversible.
   var dd = document.getElementById('menu-dd');
   var menuBtn = document.getElementById('menuBtn');
+  if (dd && menuBtn) {
   var locked  = document.getElementById('dd-locked');
   var items   = document.getElementById('dd-items');
   var lockHint= document.getElementById('lockHint');
@@ -1686,6 +1727,7 @@
         });
     });
   }
+  } // end read-only guard (if dd && menuBtn)
 
   // Pending changes (key -> value), saved on click of the Save button.
   var pending = {};
@@ -2624,8 +2666,12 @@
   // Admin overlay routing: #admin=system|logs|tools opens the admin
   // screen with that sub-tab. Clearing the hash closes it.
   function readAdminHash() {
-    var m = location.hash.match(/^#admin=([a-z]+)/);
-    return m ? m[1] : null;
+    // Read-only public build: the admin overlay (settings / system /
+    // logs / tools) is disabled. Always return null so #admin=... hashes
+    // are inert and openAdmin() is never reached. The mutating server
+    // endpoints are also blocked (config.php POST / birdnet-status
+    // restart) as the authoritative guarantee.
+    return null;
   }
   // #about - brief explainer popup; reached via /about (302 -> /#about)
   // or the masthead eyebrow. aria-hidden drives the CSS fade/slide.

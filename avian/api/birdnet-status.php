@@ -31,6 +31,16 @@ if (getenv('AV_REQUIRE_AUTH') === '1' && empty($_SERVER['HTTP_AUTHORIZATION'])) 
 
 $action = $_GET['action'] ?? 'diag';
 
+// Read-only public deployment: service control is disabled. The status
+// facade still serves the read-only actions (system / services / logs /
+// diag), but `restart` is rejected so no one can bounce services from
+// the web. The restart handler below is kept intact but unreachable.
+if ($action === 'restart') {
+    http_response_code(405);
+    echo json_encode(['error' => 'read-only: service control is disabled']);
+    exit;
+}
+
 // Path layout: /home/{USER}/BirdNET-Pi/avian/api/birdnet-status.php
 //   __DIR__              -> .../BirdNET-Pi/avian/api
 //   dirname(__DIR__, 2)  -> .../BirdNET-Pi

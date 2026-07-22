@@ -104,6 +104,19 @@ function safe_string_value(string $v): bool {
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
+// Read-only public deployment: configuration changes via the web are
+// disabled. Only GET (read current values) is served; any write method
+// is rejected here so nothing can alter birdnet.conf or trigger a
+// service restart through this endpoint. The POST handler below is kept
+// intact but unreachable, so re-enabling write access is a one-line
+// change if this ever runs on a trusted, authenticated deployment.
+if ($method !== 'GET') {
+    http_response_code(405);
+    header('Allow: GET');
+    echo json_encode(['error' => 'read-only: configuration changes are disabled']);
+    exit;
+}
+
 if ($method === 'GET') {
     $conf = read_conf($CONF_PATH);
     $out = [];
