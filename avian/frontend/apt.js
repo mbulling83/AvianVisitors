@@ -2,7 +2,7 @@
   var PLACEHOLDER = [{"sci":"Calypte anna","com":"Anna's Hummingbird","featured":true},{"sci":"Passer domesticus","com":"House Sparrow"},{"sci":"Haemorhous mexicanus","com":"House Finch"},{"sci":"Turdus migratorius","com":"American Robin"},{"sci":"Zenaida macroura","com":"Mourning Dove"},{"sci":"Spinus psaltria","com":"Lesser Goldfinch"},{"sci":"Zonotrichia leucophrys","com":"White-crowned Sparrow"},{"sci":"Aphelocoma californica","com":"California Scrub-Jay"},{"sci":"Mimus polyglottos","com":"Northern Mockingbird"},{"sci":"Sayornis nigricans","com":"Black Phoebe"},{"sci":"Larus occidentalis","com":"Western Gull"},{"sci":"Corvus brachyrhynchos","com":"American Crow"}];
   // Bumped whenever the offline sketch build changes, so the browser
   // doesn't keep a stale cache after we regenerate the sketches.
-  var SKETCH_VERSION = 'r11'; // r11: +UK starter species (Seedream 4.5 via
+  var SKETCH_VERSION = 'r12'; // r11: +UK starter species (Seedream 4.5 via
                               // OpenRouter), perched + flight, clean cutouts.
   // Cache-bust for /api/img - bump whenever a bird gets re-rendered via
   // /api/regen or whenever you need every CF DC to drop its cached copy.
@@ -10,7 +10,7 @@
   // equivalent to a global cache purge for /api/img. (caches.default
   // .delete() in the worker only affects ONE colo at a time, so a
   // versioned URL is the only reliable way to invalidate everywhere.)
-  var IMG_VERSION = 'r11'; // r11: +UK starter species; drop every cached copy.
+  var IMG_VERSION = 'r12'; // r11: +UK starter species; drop every cached copy.
 
   // ---- Sliding pill helper ----
   // Each segmented control has a single .seg-pill element that we move via
@@ -967,9 +967,14 @@
       var centerPct = (i + 0.5) / C * 100;
       var n = +s.n || 0;
       var bottomPct = (n / maxN) * SPAN * 100;   // square height = quantity
+      // The marker shows the species' cutout illustration (same source as
+      // the collage/atlas). It stays square-positioned by count; a solid
+      // --ink fallback shows only until the image loads / if it 404s.
+      var markSrc = './avian/api/cutout.php?sci=' + encodeURIComponent(s.sci)
+        + (s.com ? '&com=' + encodeURIComponent(s.com) : '') + '&v=' + SKETCH_VERSION;
       cols += ''
         + '<div class="stats-tl-col" data-sci="' + s.sci + '" style="left:' + centerPct.toFixed(3) + '%;width:' + colW.toFixed(2) + 'px">'
-        +   '<div class="stats-tl-square" style="bottom:' + bottomPct.toFixed(1) + '%;width:' + sq.toFixed(1) + 'px;height:' + sq.toFixed(1) + 'px"></div>'
+        +   '<div class="stats-tl-square" style="bottom:' + bottomPct.toFixed(1) + '%;width:' + sq.toFixed(1) + 'px;height:' + sq.toFixed(1) + 'px;background-image:url(&quot;' + markSrc + '&quot;)"></div>'
         +   '<div class="stats-tl-label" style="bottom:calc(' + bottomPct.toFixed(1) + '% + ' + (sq + LABEL_GAP) + 'px)"><span class="com">' + (s.com || s.sci) + '</span><span class="sci">' + s.sci + '</span></div>'
         + '</div>';
       var lab = fmtTs(parseTs(s.last_seen));

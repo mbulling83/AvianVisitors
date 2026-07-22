@@ -670,24 +670,30 @@
   .stats-tl-square {
     position: absolute; left: 50%;
     transform: translateX(-50%);
-    background: var(--ink);
-    /* Paper-coloured side borders. box-sizing: border-box keeps the box
-       column-filling, so the fill just insets 1px each side. Where two
-       squares touch, the abutting borders read as a crisp white line
-       directly between them; on the cluster's outer edges they vanish
-       into the matching paper background. */
-    border-left: 1px solid var(--paper);
-    border-right: 1px solid var(--paper);
-    transition: background 140ms ease, transform 140ms ease;
+    /* The marker shows the species' cutout illustration, contained and
+       bottom-anchored so the bird sits on the count baseline. --ink is a
+       fallback tint visible only until the transparent PNG paints (or if
+       it 404s), so an unresolved species still reads as a solid mark. */
+    background-color: transparent;
+    background-repeat: no-repeat;
+    background-position: center bottom;
+    background-size: contain;
+    transition: transform 140ms ease, filter 140ms ease;
+  }
+  .stats-tl-square::before {
+    /* Faint ink placeholder behind the image - fades out once the
+       transparent bird covers it; harmless if the image is opaque. */
+    content: ''; position: absolute; inset: 0; z-index: -1;
+    background: var(--ink); opacity: 0.06;
   }
   .stats-tl-col { cursor: pointer; }
   /* Cross-highlight: hovering a square or a table row lights up the
-     matching species on the other side - the square scales up and its
-     label scales + shifts to the accent ink, so the whole column reads
-     as selected. */
+     matching species on the other side - the marker scales up with an
+     accent drop-shadow (not a fill, so the illustration stays visible),
+     and its label scales + shifts to the accent ink. */
   .stats-tl-col.sync-hi .stats-tl-square {
-    background: var(--accent);
     transform: translateX(-50%) scale(1.18);
+    filter: drop-shadow(0 0 3px var(--accent));
   }
   .stats-tl-col.sync-hi .stats-tl-label {
     transform: rotate(-90deg) translateY(55%) scale(1.1);
